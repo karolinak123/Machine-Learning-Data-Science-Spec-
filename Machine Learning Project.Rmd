@@ -1,0 +1,128 @@
+---
+title: "Machine Learning Project"
+author: "Karolina Kosinska"
+date: "November 20, 2018"
+output:
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning=FALSE, cache=TRUE)
+setwd("C:/Users/kkosins/Desktop/Coursera Data Science/Machine Learning")
+load("Project Workspace.RData", envir = parent.frame(), verbose = FALSE)
+```
+
+## Part 1: Data Preparation and Features Selection
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it.
+The goal of this project is to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants and 
+predict the manner in which they did the exercise.
+
+Following packages were used to conduct the analysis in R:
+-ggplot2
+-caret
+-httpuv
+-klaR.
+```{r echo=FALSE, results='hide'}
+require(ggplot2)
+require(caret)
+require(httpuv)
+require(klaR)
+require(mime)
+```
+
+First, training dataset and testing dataset were created. I assumed that 70% of available data will be used for training purposes and remaining 30% will be used for validation/testing.
+
+```{r results='hide'}
+#Reading in raw data
+data<-read.csv("pml-training.csv")
+#Creating test and train samples
+inTrain<-createDataPartition(y=data$classe, p=0.70, list=FALSE)
+training<-data[inTrain,]
+testing<-data[-inTrain,]
+```
+
+Following features were initially taken into account when building the model: <br/>
+-"roll_belt"      
+-"pitch_belt"     
+-"yaw_belt"       
+-"roll_arm"       
+-"pitch_arm"      
+-"yaw_arm"        
+-"roll_dumbbell" 
+-"pitch_dumbbell" 
+-"yaw_dumbbell"   
+-"roll_forearm"   
+-"pitch_forearm"  
+-"yaw_forearm"
+
+```{r results='hide' }
+#Choosing columns related to measurements of the accelerometers on the belt, forearm, arm, and dumbell
+training<-training[,c(8,9,10,46,47,48,84,85,86,122,123,124,160)]
+testing<-testing[,c(8,9,10,46,47,48,84,85,86,122,123,124,160)]
+```
+
+Then, using Recurrent Feature Elimination with 10 fold cross-validation I decided to go with all preliminarily chosen features. Below there is a plot of accuracy - as you can see, accuracy is increasing with number of variables increase.
+
+```{r results='hide'}
+#no of features available
+features_no<-ncol(training)-1
+#Recurrent Feature Elimination: 10 fold cross-validation
+control<-rfeControl(functions=nbFuncs, method = "cv", number = 10)
+results<-rfe(training[,1:features_no], y=training[,c("classe")], sizes = c(1:(features_no)), rfeControl = control)
+```
+```{r}
+#Accuracy vs number of variables plot
+plot(results, type=c("g", "o"))
+```
+
+## Part 2: Model training
+After data preparation and features selection, I will train two models. As we want to classify each activity/excercise to one of the groups (A-E) I decided to use the following approach: Model 1 will be Recursive Partitioning And Regression Trees and Model 2 will be Random Forest. I will pre-process the data (center and scale it).
+```{r }
+#Pre-processing and training with Recursive Partitioning And Regression Trees (model 1) and Random Forest (model 2)
+model1<-train(classe~.,data=training, preProcess=c("center", "scale"), method="rpart")
+model2<-train(classe~.,data=training, preProcess=c("center", "scale"), method="rf")
+
+```
+
+```{r echo=TRUE}
+#Model 1 Accuracy
+model1$results['Accuracy']
+#Model 2 Accuracy
+model2$results['Accuracy']
+```
+After printing both models, we can see that accuracy of optimal model is around 0.52 for Model 1 and 0.98 for Model 2.
+
+For Model 2, with higher accuracy, the most optimal random forest model had mtry parameter (number of variables randomly sampled as candidates at each split) equal to 7.
+```{r echo=FALSE}
+plot(model2)
+```
+
+## Part 3: Model Validation
+In last step I validate the models.
+I predict y (classe) values for testing dataset with Model 1 and Model 2.
+```{r results='hide'}
+#Accuracy calcs and models comparison
+#Model 1
+prediction1<-predict(model1, testing)
+#Model 2
+prediction2<-predict(model2, testing)
+```
+
+And after printing Confusion Matrix Accuracy for both models, I decided to choose Model 2, based on Random Forest method, as it has pretty high accuracy on testing dataset (0.98) - higher than Model 1.
+
+```{r}
+#Confusion Matrix for Model 1&2
+confMatrix1<-confusionMatrix(prediction1, testing$classe)
+confMatrix2<-confusionMatrix(prediction2, testing$classe)
+#Model 1 Accuracy
+confMatrix1$overall['Accuracy']
+#Model 2 Accuracy
+confMatrix2$overall['Accuracy']
+#Model 2 Sensitivity and Specificity
+confMatrix2$byClass[,1:2]
+```
+
+Also we can see that for Model 2 Sensitivity and Specificity for each group classification is above 95% in testing dataset.
+Out of sample error I expect for that model is around 1.30%.
+
